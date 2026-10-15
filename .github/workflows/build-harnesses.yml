@@ -1,0 +1,73 @@
+name: Build harnesses
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    name: Select harnesses
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      harnesses: ${{ steps.select.outputs.harnesses }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select changed harnesses
+        id: select
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 .github/scripts/select-harnesses.py
+
+  build:
+    name: Build (${{ matrix.harness }})
+    needs: discover
+    if: needs.discover.outputs.harnesses != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        harness: ${{ fromJSON(needs.discover.outputs.harnesses) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build container image
+        env:
+          HARNESS: ${{ matrix.harness }}
+        run: docker build --tag "byo-ext/${HARNESS}:ci" "harnesses/${HARNESS}"
+
+  summary:
+    name: Harness builds
+    needs: [discover, build]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check build results
+        env:
+          DISCOVERY_RESULT: ${{ needs.discover.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          if [[ "$DISCOVERY_RESULT" != "success" ]]; then
+            echo "Harness selection failed or was cancelled."
+            exit 1
+          fi
+          if [[ "$BUILD_RESULT" != "success" && "$BUILD_RESULT" != "skipped" ]]; then
+            echo "A harness build failed or was cancelled."
+            exit 1
+          fi
+          echo "All selected harnesses built successfully, or no builds were needed."

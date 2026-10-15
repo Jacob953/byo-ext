@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a problem with a harness or shared repository machinery.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a potential security vulnerability, follow [SECURITY.md](https://github.com/kagent-dev/byo-ext/blob/main/SECURITY.md).
+        Do not include credentials or private configuration.
+  - type: input
+    id: component
+    attributes:
+      label: Harness or shared component
+      description: Give the harness directory name or describe the repository machinery affected.
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions and environment
+      description: Include the repository commit, kagent version, framework version, and relevant platform details.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: Include relevant logs with secrets removed.
+    validations:
+      required: true

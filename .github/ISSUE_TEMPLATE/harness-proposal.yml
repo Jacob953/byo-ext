@@ -1,0 +1,30 @@
+name: Harness proposal
+description: Propose a new community BYO harness experiment.
+title: "[Harness]: "
+body:
+  - type: textarea
+    id: integration
+    attributes:
+      label: Integration
+      description: Which framework or runtime will this harness integrate, and what will it explore?
+    validations:
+      required: true
+  - type: input
+    id: maintainers
+    attributes:
+      label: Maintainers
+      description: GitHub handles of contributors willing to maintain this experiment.
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Integration and build approach
+      description: Describe the target kagent version, how the harness connects to kagent, and how it will build.
+    validations:
+      required: true
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Known limitations and dependencies
+      description: Include external services, credentials needed at runtime, licensing considerations, and open questions.

@@ -1,0 +1,6 @@
+# Shared files and new harnesses are owned by repository maintainers.
+* @kagent-dev/maintainers
+
+# Add rules for individual harnesses below, once their owners have write access.
+# Example:
+# /harnesses/my-harness/ @contributor-handle
