@@ -349,6 +349,9 @@ func (p *process) collect(ctx context.Context, sink runtime.EventSink) (runtime.
 			default:
 				return runtime.Outcome{}, fmt.Errorf("unsupported ACP stop reason")
 			}
+			// In pinned DSH 0.2.0-rc.2, session/close drains activity and awaits
+			// session persistence. The prompt response alone is not this barrier;
+			// propagate close/flush errors rather than reporting successful completion.
 			closeCtx, cancel := context.WithTimeout(context.Background(), stopTimeout)
 			defer cancel()
 			_, err := p.wire.call(closeCtx, "4", "session/close", sessionParams{SessionID: p.events.sessionID})

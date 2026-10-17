@@ -155,6 +155,10 @@ func (c *Config) Patch(dataDir string) ([]byte, error) {
 		{ID: "system-prompt", Config: persona{Prefix: c.Agent.Instruction}},
 		{ID: "session-persistence-jsonl", Config: directory{Root: filepath.Join(dataDir, "dsh", "sessions")}},
 		{ID: "storage-json", Config: directory{Root: filepath.Join(dataDir, "dsh", "storages")}},
+		// Disable request attachments independently of the selected provider.
+		// Local conversation recovery still uses session-persistence-jsonl above.
+		{ID: "session-log-deepseek", Disabled: true},
+		{ID: "plugin-package-inventory-deepseek", Disabled: true},
 		// These optional network consumers are outside the compiled ModelConfig/MCP egress contract.
 		{ID: "tool-web", Disabled: true},
 		{ID: "otel", Disabled: true},

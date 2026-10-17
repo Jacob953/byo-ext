@@ -1,6 +1,7 @@
 # Migration verification
 
-Date: 2026-10-16. The protected-MCP fork defect found during migration acceptance
+Migration acceptance: 2026-10-16; configuration and persistence follow-up:
+2026-10-17. The protected-MCP fork defect found during migration acceptance
 is fixed in the adapter. Container regression checks and all 15 real-cluster
 acceptance scenarios passed. The remaining boundaries are listed below.
 
@@ -12,8 +13,8 @@ acceptance scenarios passed. The remaining boundaries are listed below.
 - DSH: `0.2.0-rc.2`; Go: `1.27.0`; PostgreSQL test service: `16-alpine`.
 - Initial clean exported source tree: `c5030ee35ddd5e7d4d7936101161c721c7c6ad3b`.
 - Source tree after the fork fix and regression tests:
-  `9c9c5d7beceea556a279884f63e239ee74f6d58b`. Subsequent changes only update
-  this report and the README.
+  `9c9c5d7beceea556a279884f63e239ee74f6d58b`. This identifies the October 16
+  migration verification; the October 17 follow-up is recorded separately below.
 - Production arm64 image used for the final cluster run:
   `sha256:358fb784deb5cdf4d2d3e9852eb7e387d2cbb07a8a2635a43d3c372654410783`.
 
@@ -27,7 +28,44 @@ RPC namespace, typed PendingRestorer and ToolExecutionSink contracts, persisted
 trace origin, protobuf configuration cloning before selecting an MCP binding,
 and cancellation after confirmed native-process cleanup.
 
-## Passed checks
+## October 17 follow-up
+
+Following the independent findings in
+[kagent #3194](https://github.com/kagent-dev/kagent/issues/3194#issuecomment-6231088406),
+the adapter explicitly disables `session-log-deepseek` and
+`plugin-package-inventory-deepseek`. Local `session-persistence-jsonl` and
+`storage-json` remain enabled. This is configuration hardening: the current
+`llm-pi-ai` provider path had not exhibited the upload fields in model requests.
+
+The existing completion barrier is unchanged. In pinned DSH `0.2.0-rc.2`,
+`session/close` drains activity and awaits persistence flush. A new A2A/TaskStore
+regression test uses a controlled ACP subprocess to delay that response after
+assistant output and the prompt response. Neither the call nor settlement may
+complete while the gate is held. Releasing it succeeds; returning a close error
+instead settles the task as failed. This simulates the ACP persistence contract;
+it does not reproduce the reported 1 ms crash window or inject a real disk failure.
+
+The real-DSH two-turn recovery test now checks both model request bodies for
+absence of `dsh_session_log` and `dsh_plugin_packages`, while verifying that the
+second process retains the first turn's history. Configuration tests also require
+both upload plugins to be disabled and local persistence to remain enabled.
+
+The AMD64 production image was built without extra build arguments or credentials
+from clean exported source tree `9e83660b2f1518934f3a8e61e29ea54cad426162`.
+Subsequent changes only update this report. The non-root AMD64 smoke test passed
+configuration/version/supervisor validation and returned `/readyz` HTTP 200.
+Host short race tests, Linux configuration race tests, and host/Linux lint passed.
+The complete Linux arm64 bridge race suite passed with 49 top-level tests and
+141 passing test/subtest entries, with zero failures, skips or race reports.
+It used real DSH and a disposable PostgreSQL service; test containers dropped all
+capabilities and enabled `no-new-privileges`. Temporary containers and the test
+network were removed after verification.
+
+Per-call usage reporting, incremental ACP output and compatibility with newer
+DSH versions remain separate work. This follow-up does not change kagent core or
+DSH sources, and does not repeat the October 16 real-cluster acceptance below.
+
+## October 16 passed checks
 
 The fork-fix rerun rebuilt both harness image architectures and repeated AMD64
 startup, the full Linux bridge race suite, host short race tests, both lint

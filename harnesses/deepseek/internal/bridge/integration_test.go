@@ -84,6 +84,12 @@ func TestRealDSHResumesConversation(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	require.Len(t, requests, 2)
+	for i, request := range requests {
+		var fields map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(request, &fields))
+		require.NotContains(t, fields, "dsh_session_log", "model request %d", i)
+		require.NotContains(t, fields, "dsh_plugin_packages", "model request %d", i)
+	}
 	require.Contains(t, string(requests[0]), "Keep answers short.")
 	require.Contains(t, string(requests[1]), "first result")
 	require.Contains(t, string(requests[1]), "Remember the number 27.")

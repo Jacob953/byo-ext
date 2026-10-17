@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -213,6 +214,18 @@ func TestACPHelperProcess(t *testing.T) {
 		case "session/cancel":
 			result(json.RawMessage(promptID), map[string]string{"stopReason": "cancelled"})
 		case "session/close":
+			if gate := os.Getenv("KAGENT_DSH_TEST_CLOSE_GATE"); gate != "" {
+				client := &http.Client{Timeout: 10 * time.Second}
+				response, err := client.Get(gate)
+				if err != nil {
+					os.Exit(8)
+				}
+				_ = response.Body.Close()
+				if response.StatusCode != http.StatusOK {
+					write(message{JSONRPC: "2.0", ID: m.ID, Error: &rpcError{Code: -32603, Message: "session persistence flush failed"}})
+					continue
+				}
+			}
 			result(m.ID, struct{}{})
 		case "":
 			var response permissionResponse

@@ -35,8 +35,10 @@ current migration checks from earlier cluster checks on an older control plane.
 
 ACP emits committed semantic updates, rather than raw provider token deltas.
 Context occupancy is not per-call token usage, so the bridge does not report
-model token totals from ACP usage updates. DSH's own telemetry exporter and
-auxiliary web tools are disabled; the kagent wrapper retains its telemetry path.
+model token totals from ACP usage updates. DSH's own telemetry exporter,
+session-log upload and plugin-inventory upload plugins, and auxiliary web tools
+are explicitly disabled; the kagent wrapper retains its telemetry path.
+Local session persistence remains enabled for conversation recovery.
 
 Unsupported configuration is rejected at startup: Responses API, model
 generation overrides, API-key passthrough, custom TLS, SSE/stdio MCP bindings,
@@ -62,8 +64,11 @@ recovery from arrays, scalars, null and malformed argument strings.
 
 Each turn starts a DSH ACP process and creates or resumes the Actor's private
 DSH session. A pending permission request retains that process until the
-decision arrives. Completion closes the session and stdin so DSH can flush its
-state. Two nested Linux child subreapers own each process tree, including
+decision arrives. Successful completion waits for `session/close`, which drains
+activity and flushes persistence in the pinned DSH version. A close/flush error
+fails the task even if assistant text has already been emitted. This barrier
+does not guarantee recovery before an external DATA snapshot is published.
+Two nested Linux child subreapers own each process tree, including
 orphaned tools and tools that create a separate session or process group.
 
 Cancellation interrupts blocked ACP writes by closing stdin. After five seconds

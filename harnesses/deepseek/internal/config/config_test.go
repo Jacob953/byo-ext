@@ -76,11 +76,14 @@ func TestPatchPreservesInstructionAndUsesDurableState(t *testing.T) {
 	data, err := c.Patch("/data")
 	require.NoError(t, err)
 	var rows []struct {
-		ID     string          `json:"id"`
-		Config json.RawMessage `json:"config"`
+		ID       string          `json:"id"`
+		Config   json.RawMessage `json:"config"`
+		Disabled bool            `json:"disabled"`
 	}
 	require.NoError(t, json.Unmarshal(data, &rows))
+	disabled := make(map[string]bool)
 	for _, row := range rows {
+		disabled[row.ID] = row.Disabled
 		if row.ID == "system-prompt" {
 			var p persona
 			require.NoError(t, json.Unmarshal(row.Config, &p))
@@ -89,6 +92,13 @@ func TestPatchPreservesInstructionAndUsesDurableState(t *testing.T) {
 		if row.ID == "session-persistence-jsonl" {
 			require.JSONEq(t, `{"root":"/data/dsh/sessions"}`, string(row.Config))
 		}
+	}
+	for _, id := range []string{"session-log-deepseek", "plugin-package-inventory-deepseek", "otel", "otel-exporter"} {
+		require.True(t, disabled[id], "%s must be explicitly disabled", id)
+	}
+	for _, id := range []string{"session-persistence-jsonl", "storage-json"} {
+		require.Contains(t, disabled, id)
+		require.False(t, disabled[id], "%s must remain enabled for recovery", id)
 	}
 	require.Contains(t, string(data), `"apiKeyEnv":"OPENAI_API_KEY"`)
 }
