@@ -11,11 +11,12 @@ import (
 )
 
 type recordingSink struct {
-	id        string
-	texts     []string
-	calls     []runtime.ToolCall
-	results   []runtime.ToolResult
-	callReady chan struct{}
+	id         string
+	texts      []string
+	calls      []runtime.ToolCall
+	results    []runtime.ToolResult
+	callReady  chan struct{}
+	modelCalls []runtime.ModelCall
 }
 
 func (s *recordingSink) SessionStarted(v runtime.SessionStarted) error {
@@ -38,7 +39,7 @@ func (s *recordingSink) ToolResult(v runtime.ToolResult) error {
 	s.results = append(s.results, v)
 	return nil
 }
-func (s *recordingSink) ModelCall(runtime.ModelCall) {}
+func (s *recordingSink) ModelCall(call runtime.ModelCall) { s.modelCalls = append(s.modelCalls, call) }
 
 func TestToolArgumentsPreserveNonObjectInput(t *testing.T) {
 	for _, raw := range []string{`[]`, `42`, `true`, `null`, `"invalid"`, `"{bad json"`} {

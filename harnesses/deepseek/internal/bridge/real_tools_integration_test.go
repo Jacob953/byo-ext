@@ -100,6 +100,9 @@ func TestRealDSHBuiltinToolsAndPermissions(t *testing.T) {
 					require.Equal(t, sink.id, resumed.id)
 					require.Equal(t, []string{"audit complete"}, resumed.texts)
 					require.Equal(t, int32(2), requests.Load())
+					require.Len(t, sink.modelCalls, 1)
+					require.False(t, sink.modelCalls[0].Canceled, "the model finished before tool permission cancellation")
+					require.Len(t, resumed.modelCalls, 1)
 					return
 				}
 				request := out.Pending.Request().(*runtime.ApprovalRequest)
@@ -118,6 +121,7 @@ func TestRealDSHBuiltinToolsAndPermissions(t *testing.T) {
 				require.Contains(t, fmt.Sprint(sink.results[0].Result), "audit-ok")
 			}
 			require.Equal(t, int32(2), requests.Load(), "tool failure should be returned to the model for recovery")
+			require.Len(t, sink.modelCalls, 2, "one usage event per model call, including native approval resume")
 		})
 	}
 }

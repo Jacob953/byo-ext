@@ -18,6 +18,7 @@ import (
 	"github.com/kagent-dev/byo-ext/harnesses/deepseek/internal/config"
 	"github.com/kagent-dev/byo-ext/harnesses/deepseek/internal/runtimeutil"
 	"github.com/kagent-dev/byo-ext/harnesses/deepseek/internal/supervisor"
+	"github.com/kagent-dev/byo-ext/harnesses/deepseek/internal/usage"
 	"github.com/kagent-dev/kagent/go/harness/runtime"
 	runtimea2a "github.com/kagent-dev/kagent/go/harness/runtime/a2a"
 )
@@ -88,18 +89,21 @@ func (r *Runner) Validate(ctx context.Context) error {
 }
 
 type process struct {
-	origin      runtime.TraceOrigin
-	stdin       io.WriteCloser
-	control     io.Closer
-	wire        *wire
-	done        chan struct{}
-	waitErr     error
-	home        string
-	events      events
-	mcp         *mcpProxy
-	runner      *Runner
-	cleanupOnce sync.Once
-	cleanupErr  error
+	origin        runtime.TraceOrigin
+	stdin         io.WriteCloser
+	control       io.Closer
+	wire          *wire
+	done          chan struct{}
+	waitErr       error
+	home          string
+	events        events
+	mcp           *mcpProxy
+	runner        *Runner
+	cleanupOnce   sync.Once
+	cleanupErr    error
+	usageMu       sync.Mutex
+	usage         *usage.Cursor
+	usageCanceled atomic.Bool
 }
 
 func (r *Runner) start(ctx context.Context) (*process, error) {
@@ -181,6 +185,7 @@ func (r *Runner) run(ctx context.Context, turn runtime.Turn, sink runtime.EventS
 		if out.Pending == nil {
 			returnErr = errors.Join(returnErr, p.stop())
 		}
+		p.reportUsage(ctx, sink)
 	}()
 	setupCtx, cancel := context.WithTimeout(ctx, setupTimeout)
 	defer cancel()
@@ -241,6 +246,7 @@ func (r *Runner) run(ctx context.Context, turn runtime.Turn, sink runtime.EventS
 		return out, err
 	}
 	p.events.sessionID = id
+	p.beginUsage(ctx, turn.ContinuationID != "")
 	if err := sink.SessionStarted(runtime.SessionStarted{ContinuationID: id}); err != nil {
 		return out, err
 	}
@@ -307,6 +313,7 @@ func (p *process) collect(ctx context.Context, sink runtime.EventSink) (runtime.
 		}
 		if err != nil {
 			if ctx.Err() != nil {
+				p.usageCanceled.Store(true)
 				return runtime.Outcome{}, errors.Join(ctx.Err(), p.cancel())
 			}
 			return runtime.Outcome{}, err
@@ -398,13 +405,16 @@ func (p *pending) Resume(ctx context.Context, response runtime.InputResponse, si
 		// done closes only after the supervisor confirms descendant cleanup.
 		// The exit is the failure we report, so preserve cleanup errors without
 		// replacing this actionable outcome with the expected process exit error.
-		return runtime.Outcome{Failure: &runtime.Failure{Message: "DSH exited while awaiting approval. The approval could not be applied. Send a new message in this conversation to continue."}}, p.process.cleanup()
+		err := p.process.cleanup()
+		p.process.reportUsage(ctx, sink)
+		return runtime.Outcome{Failure: &runtime.Failure{Message: "DSH exited while awaiting approval. The approval could not be applied. Send a new message in this conversation to continue."}}, err
 	default:
 	}
 	defer func() {
 		if out.Pending == nil {
 			returnErr = errors.Join(returnErr, p.process.stop())
 		}
+		p.process.reportUsage(ctx, sink)
 	}()
 	option := p.reject
 	if decision.Approved {
@@ -420,15 +430,17 @@ func (p *pending) Resume(ctx context.Context, response runtime.InputResponse, si
 	return p.process.collect(ctx, sink)
 }
 
-func (p *pending) Cancel(_ context.Context, _ runtime.ModelCallSink) error {
+func (p *pending) Cancel(ctx context.Context, sink runtime.ModelCallSink) error {
+	defer p.process.reportUsage(ctx, sink)
 	select {
 	case <-p.process.done:
 		return p.process.cleanup()
 	default:
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), stopTimeout)
+	p.process.usageCanceled.Store(true)
+	closeCtx, cancel := context.WithTimeout(context.Background(), stopTimeout)
 	defer cancel()
-	err := p.process.wire.respond(ctx, p.id, permissionResponse{Outcome: permissionOutcome{Outcome: "cancelled"}})
+	err := p.process.wire.respond(closeCtx, p.id, permissionResponse{Outcome: permissionOutcome{Outcome: "cancelled"}})
 	if err == nil {
 		err = p.process.cancel()
 	}

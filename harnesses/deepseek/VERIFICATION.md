@@ -1,8 +1,8 @@
 # Migration verification
 
 Migration acceptance: 2026-10-16; configuration and persistence follow-up:
-2026-10-17. The protected-MCP fork defect found during migration acceptance
-is fixed in the adapter. Container regression checks and all 15 real-cluster
+2026-10-17; model usage follow-up: 2026-10-19. The protected-MCP fork defect
+found during migration acceptance is fixed in the adapter. Container regression checks and all 15 real-cluster
 acceptance scenarios passed. The remaining boundaries are listed below.
 
 ## Versions and scope
@@ -27,6 +27,43 @@ Migration changes include protobuf JSON configuration, the current TaskStore
 RPC namespace, typed PendingRestorer and ToolExecutionSink contracts, persisted
 trace origin, protobuf configuration cloning before selecting an MCP binding,
 and cancellation after confirmed native-process cleanup.
+
+## October 19 model usage follow-up
+
+The adapter maps local root-session DSH v4 records to the existing kagent
+`ModelCall` sink after native-process cleanup. It supports raw JSONL and the
+native concatenated zstd format, associates each call with its historical model
+context, includes cache reads/writes in input tokens, and preserves native timing,
+finish reason and available response ID. It does not use ACP context occupancy
+as model usage. Shared kagent and DSH sources remain unchanged.
+
+Synthetic parser tests cover cache accounting, missing and invalid counts,
+integer overflow, historical model changes, partial calls, repeated emission,
+restore/fork baselines, late repairs, truncated logs, ambiguous paths and format
+rejection. Real DSH tests verify nonzero cached usage across a new Runner using
+persisted DATA, protected-MCP approval restoration without duplicate calls,
+completed tool-call usage during native approval cancellation, and partial usage
+when a model stream is canceled. These tests assert the adapter's `ModelCall`
+output; they do not exercise an external telemetry collector or billing system.
+
+The default AMD64 production image was built from clean exported source tree
+`41eac873758b4f7f52d362a3897dc692bba3dc72`, using only the harness directory,
+without credentials or extra build arguments. Subsequent changes only update
+this report. Configuration/version/supervisor validation and non-root `/readyz`
+HTTP 200 passed. Host short race tests and host/Linux lint passed.
+
+The complete Linux arm64 bridge race suite passed: 51 top-level tests and
+143 passing test/subtest entries, with no failures, skips or race reports.
+The Linux usage package added 6 top-level tests and 22 passing test/subtest
+entries. Real DSH and disposable PostgreSQL ran with all capabilities dropped
+and `no-new-privileges`. Temporary containers and the test network were removed.
+
+Usage remains best effort: subagent calls, provider retries, separate reasoning
+counts and request IDs are unavailable on this path. Crash-time telemetry is
+not backfilled into new tasks. Invalid or oversized logs disable usage reporting
+without failing the conversation. Native permissions defer emission while the
+process is alive. See the README for parser limits and reporting semantics.
+This follow-up does not repeat cluster acceptance or call a live provider.
 
 ## October 17 follow-up
 
@@ -61,9 +98,11 @@ It used real DSH and a disposable PostgreSQL service; test containers dropped al
 capabilities and enabled `no-new-privileges`. Temporary containers and the test
 network were removed after verification.
 
-Per-call usage reporting, incremental ACP output and compatibility with newer
-DSH versions remain separate work. This follow-up does not change kagent core or
-DSH sources, and does not repeat the October 16 real-cluster acceptance below.
+At that checkpoint, per-call usage reporting, incremental ACP output and
+compatibility with newer DSH versions remained separate work. The October 19
+follow-up above adds per-call usage for the pinned provider path. The October 17
+changes did not modify kagent core or DSH sources, or repeat the October 16
+real-cluster acceptance below.
 
 ## October 16 passed checks
 

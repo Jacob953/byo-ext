@@ -31,7 +31,7 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    mkdir /tests && for pkg in bridge config operations runtimeutil supervisor; do \
+    mkdir /tests && for pkg in bridge config operations runtimeutil supervisor usage; do \
       go test -race -c -o /tests/$pkg.test ./internal/$pkg || exit 1; \
     done
 FROM runtime-base AS test

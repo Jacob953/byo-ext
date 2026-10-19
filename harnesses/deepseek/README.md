@@ -28,14 +28,18 @@ current migration checks from earlier cluster checks on an older control plane.
 - Whole Streamable HTTP MCP servers with compiled headers, HTTP timeouts and
   session termination policy, enforced by a loopback Go MCP proxy.
 - Text replies and text tool results, including tool errors.
+- Root-session model-call usage mapped to kagent telemetry from local DSH logs,
+  including cache tokens, call timing and cancellation of interrupted calls.
 - ACP cancellation and session resumption after the DSH process exits.
 - DSH one-shot permission requests mapped to kagent's approval messages.
 - `requireApproval` on HTTP MCP servers, enforced by the adapter before dispatch
   and answered through the same kagent HITL flow.
 
 ACP emits committed semantic updates, rather than raw provider token deltas.
-Context occupancy is not per-call token usage, so the bridge does not report
-model token totals from ACP usage updates. DSH's own telemetry exporter,
+Context occupancy is not per-call token usage. The bridge reads persisted model
+calls after the native process stops and reports them through kagent's existing
+`ModelCall` sink. It does not derive token totals from ACP occupancy updates.
+DSH's own telemetry exporter,
 session-log upload and plugin-inventory upload plugins, and auxiliary web tools
 are explicitly disabled; the kagent wrapper retains its telemetry path.
 Local session persistence remains enabled for conversation recovery.
@@ -206,13 +210,44 @@ community harness; their closure alone is not proof that a local guard is obsole
 | [#3213](https://github.com/kagent-dev/kagent/pull/3213), open | Explicit deletion after failed settlement is an escape hatch, not task or native-call recovery. |
 
 Native ACP permission recovery, approval batches, generic exactly-once remote
-execution and per-call model usage reporting remain unsupported. The pinned
+execution remain unsupported. The pinned
 telemetry vocabulary has no DSH runtime value; the adapter leaves that identity
 tuple unset rather than reporting another runtime. Protected-MCP DATA restoration
 and worker replacement after suspension passed cluster acceptance, as did
 continuation from settled protected-MCP forks. Arbitrary Actor loss before a
 settled snapshot is not covered by those successful checks.
 The latest migration checks are recorded in [VERIFICATION.md](VERIFICATION.md).
+
+## Model usage reporting
+
+The adapter reads the pinned DSH v4 JSONL session format, including concatenated
+zstd frames. Each root-session model record maps to one kagent `ModelCall` with
+its request/response model, provider, native step timing, finish reason and
+available response ID. Input tokens include cache reads and writes, which are
+also reported separately. Output tokens already include reasoning tokens on the
+pinned provider path; no separate reasoning count is inferred.
+
+Reporting happens after native-process cleanup, including protected-MCP parking.
+Native permission requests keep the process alive, so reporting waits until
+resume or cancellation stops it. A cursor excludes existing history when a
+conversation resumes or is copied into a fork. Repeated reporting within the
+same invocation does not emit the same records again. Only an interrupted call
+associated with explicit adapter cancellation is marked canceled; earlier
+completed calls keep their original status.
+
+This is best-effort observability, not a billing ledger. A crash before emission
+can lose telemetry; a reconstructed process does not backfill earlier calls into
+a new task or trace. Subagent calls, provider retries and request IDs are not
+reported. Missing or interrupted usage is marked partial, and native counters
+are passed through without estimates for information the provider omitted.
+Invalid, unsupported or unavailable logs produce a warning without failing the
+conversation or manufacturing usage. A malformed complete record or corrupt zstd
+frame rejects the snapshot; an unterminated raw JSONL tail is ignored.
+
+Reading is bounded to 4,096 directory entries, 64 MiB stored / 128 MiB decoded
+per log, 16 MiB per line, 100,000 records and 4,096 model calls. Sessions exceeding
+these limits continue without model usage reporting. This parser depends on the
+pinned DSH persistence format and must be revalidated before upgrading DSH.
 
 ## Build and deploy
 

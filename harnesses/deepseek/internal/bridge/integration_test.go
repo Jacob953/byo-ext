@@ -57,6 +57,8 @@ func TestRealDSHResumesConversation(t *testing.T) {
 			data, _ := json.Marshal(map[string]any{"id": "chat-test", "object": "chat.completion.chunk", "model": "mock", "choices": []any{choice}})
 			fmt.Fprintf(w, "data: %s\n\n", data)
 		}
+		usageData, _ := json.Marshal(map[string]any{"id": "chat-test", "object": "chat.completion.chunk", "model": "mock", "choices": []any{}, "usage": map[string]any{"prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15, "prompt_tokens_details": map[string]int{"cached_tokens": 2}}})
+		fmt.Fprintf(w, "data: %s\n\n", usageData)
 		fmt.Fprint(w, "data: [DONE]\n\n")
 	}))
 	defer server.Close()
@@ -75,12 +77,29 @@ func TestRealDSHResumesConversation(t *testing.T) {
 	require.Nil(t, out.Pending)
 	require.Equal(t, "first result", strings.Join(first.texts, ""))
 	require.NotEmpty(t, first.id)
+	// Discard all adapter memory; only native DATA survives.
+	runner, err = New(cfg, executable, runner.dataDir, append(os.Environ(), "OPENAI_API_KEY=mock"))
+	require.NoError(t, err)
 	second := &recordingSink{}
 	out, err = runner.Run(ctx, runtime.Turn{Prompt: "Continue the previous conversation.", ContinuationID: first.id}, second)
 	require.NoError(t, err)
 	require.Nil(t, out.Failure)
 	require.Equal(t, first.id, second.id)
 	require.Equal(t, "second result", strings.Join(second.texts, ""))
+	for _, segment := range []*recordingSink{first, second} {
+		require.Len(t, segment.modelCalls, 1, "restored history must not be counted again")
+		call := segment.modelCalls[0]
+		require.Equal(t, int64(12), call.InputTokens)
+		require.Equal(t, int64(2), call.CacheReadTokens)
+		require.Equal(t, int64(3), call.OutputTokens)
+		require.Equal(t, "mock", call.RequestModel)
+		require.Equal(t, "mock", call.ResponseModel)
+		require.Equal(t, "chat-test", call.ResponseID)
+		require.False(t, call.UsagePartial)
+		require.False(t, call.Canceled)
+		require.False(t, call.Start.IsZero())
+		require.False(t, call.End.Before(call.Start))
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	require.Len(t, requests, 2)
