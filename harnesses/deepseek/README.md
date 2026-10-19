@@ -17,8 +17,9 @@ The Go dependency is pinned to kagent commit
 [#3165](https://github.com/kagent-dev/kagent/pull/3165)), with DSH `0.2.0-rc.2`.
 Production process supervision requires Linux. Use the
 [kagent BYO guide](https://github.com/kagent-dev/website/blob/main/docs-site/content/kagent/1.x/agents/bring-your-own-agent.md)
-for the surrounding installation. The verification report below separates the
-current migration checks from earlier cluster checks on an older control plane.
+for the surrounding installation. [VERIFICATION.md](VERIFICATION.md) records
+the October 16 cluster acceptance against this pinned control plane and the
+subsequent adapter regression checks.
 
 ## Supported configuration
 
@@ -263,11 +264,10 @@ Record the pushed image's manifest digest. The example requires the full
 
 Use a clean kagent installation whose Agent CRD supports `spec.template.inline`.
 This example targets the pinned kagent commit above. `1.0.0-alpha9` uses
-the earlier `templateRef` shape and rejects this Agent manifest. Earlier cluster
-acceptance used kagent `b42a6c53` and Substrate `0.5.0-alpha2`; it must not be
-read as acceptance of the newly pinned control plane.
-Configure a `kagent-default`
-WorkerPool, snapshot storage, and Substrate credential gateway. In namespace
+the earlier `templateRef` shape and rejects this Agent manifest. October 16
+migration acceptance used the pinned kagent commit and Substrate
+`0.5.0-alpha2`; later adapter checks are documented separately. Configure a
+`kagent-default` WorkerPool, snapshot storage, and Substrate credential gateway. In namespace
 `kagent`, create the Secret `deepseek-api-key` with an `OPENAI_API_KEY` entry
 using your normal secret-management workflow. Grant the Substrate atespace
 access to that namespace as described in

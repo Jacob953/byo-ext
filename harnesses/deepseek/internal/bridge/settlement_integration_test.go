@@ -100,7 +100,7 @@ func (s *taskStoreFixture) SettleTask(_ context.Context, r *runtimev1.TaskStoreS
 	return &runtimev1.TaskStoreServiceSettleTaskResponse{}, nil
 }
 
-func newSettlementClient(t *testing.T, executor a2asrv.AgentExecutor, check func(*a2apb.Task) error) (a2apb.A2AServiceClient, *taskStoreFixture) {
+func newSettlementStore(t *testing.T, check func(*a2apb.Task) error) (*taskstore.Store, *taskStoreFixture) {
 	t.Helper()
 	sessionID := uuid.NewString()
 	identityDir := t.TempDir()
@@ -124,7 +124,12 @@ func newSettlementClient(t *testing.T, executor a2asrv.AgentExecutor, check func
 	controller, err := controllerclient.New(controllerclient.Config{APIURL: "http://" + controlListener.Addr().String()})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, controller.Close()) })
-	tasks := taskstore.New(controller, filepath.Join(identityDir, "name"))
+	return taskstore.New(controller, filepath.Join(identityDir, "name")), api
+}
+
+func newSettlementClient(t *testing.T, executor a2asrv.AgentExecutor, check func(*a2apb.Task) error) (a2apb.A2AServiceClient, *taskStoreFixture) {
+	t.Helper()
+	tasks, api := newSettlementStore(t, check)
 	wrapped := tasks.WrapExecutor(executor, "", nil)
 	opts := []a2asrv.RequestHandlerOption{a2asrv.WithTaskStore(tasks), a2asrv.WithCallInterceptors(adka2a.HITLActivationInterceptor(), adka2a.UserIDCallInterceptor(), wrapped)}
 	if interceptor, ok := executor.(a2asrv.CallInterceptor); ok {

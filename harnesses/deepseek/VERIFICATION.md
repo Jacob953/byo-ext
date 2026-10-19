@@ -43,8 +43,8 @@ restore/fork baselines, late repairs, truncated logs, ambiguous paths and format
 rejection. Real DSH tests verify nonzero cached usage across a new Runner using
 persisted DATA, protected-MCP approval restoration without duplicate calls,
 completed tool-call usage during native approval cancellation, and partial usage
-when a model stream is canceled. These tests assert the adapter's `ModelCall`
-output; they do not exercise an external telemetry collector or billing system.
+when a model stream is canceled. These initial tests assert the adapter's
+`ModelCall` output; the OTLP follow-up below checks its export as well.
 
 The default AMD64 production image was built from clean exported source tree
 `41eac873758b4f7f52d362a3897dc692bba3dc72`, using only the harness directory,
@@ -64,6 +64,47 @@ not backfilled into new tasks. Invalid or oversized logs disable usage reporting
 without failing the conversation. Native permissions defer emission while the
 process is alive. See the README for parser limits and reporting semantics.
 This follow-up does not repeat cluster acceptance or call a live provider.
+
+### OTLP export follow-up
+
+`TestRealDSHUsageOTLP` exercises real DSH, the production A2A server, shared
+TaskStore/settlement wrapper and SDK OTLP exporters. A local HTTP/protobuf
+receiver decodes the exported gzip-compressed traces and metrics. The controller
+TaskStore and model/MCP services remain local fixtures. This is not a Kubernetes
+rerun, a deployed collector/backend test, or a live provider/billing check.
+
+The test constructs the initial executor before SDK initialization and starts
+metrics on first execution, matching production initialization order. It parks a
+protected MCP call, reconstructs the Runner and Executor from DATA while retaining
+the controller fixture, then approves the original task. It checks:
+
+- Exactly one model span per segment, with request/response model, native provider
+  alias, timing and cache counts preserved in the exported payload.
+- The original task/context identity on both parent spans, the correct initial
+  or resumed parent for each model response, and a persisted resume-origin link.
+- Cumulative input/output/cache-read totals of 12/3/2 before approval and 24/6/4
+  afterward. Cache reads are included in input, not added to it a second time.
+- Repeated flushes and a rejected late approval add no calls or tokens; the MCP
+  operation executes once. Resources retain the service name without claiming
+  another registered kagent runtime.
+
+The test runs in an isolated child process so SDK globals do not affect parallel
+bridge tests. It retains one SDK provider across executor reconstruction; it does
+not assert cross-process metric aggregation after Actor replacement. The local
+receiver required the signal-specific OTLP HTTP paths and gzip decoding; those
+fixture corrections did not require changes to the adapter or shared runtime.
+
+The full Linux arm64 race suite passed with 52 top-level tests and 144 unique
+passing test/subtest cases, with zero failures, skips or race reports. The usage
+parser suite passed 22 cases. After adding production resource identity to the
+OTLP fixture, its focused race test and Linux lint passed again. Host short race
+tests and host lint also passed. No production logic changed in this follow-up.
+
+The final default AMD64 image built from clean exported source tree
+`2c6fc907e331a5f00790fc7b39a5b34211345e2c`; subsequent changes only update this
+report. The production image also passed non-root configuration/version/
+supervisor validation and readiness HTTP 200. Temporary PostgreSQL and the
+verification network were removed after the suite completed.
 
 ## October 17 follow-up
 
@@ -208,6 +249,21 @@ docker run --rm --network "$TEST_NETWORK" --cap-drop=ALL \
   --security-opt=no-new-privileges -e DSH_APPROVAL_TEST_DATABASE \
   byo-ext/deepseek:test -test.v -test.timeout=10m
 ```
+
+The usage parser and the OTLP export test can also run independently, without
+PostgreSQL or provider credentials:
+
+```sh
+docker run --rm --cap-drop=ALL --security-opt=no-new-privileges \
+  --entrypoint /tests/usage.test byo-ext/deepseek:test -test.v
+docker run --rm --cap-drop=ALL --security-opt=no-new-privileges \
+  byo-ext/deepseek:test -test.v -test.run '^TestRealDSHUsageOTLP$' -test.timeout=3m
+```
+
+The OTLP test runs the production A2A server and SDK exporters in an isolated
+child process. Its local receiver decodes HTTP/protobuf traces and metrics;
+it is a collector-protocol fixture, not a deployed collector/backend. The test
+uses the server's readiness port 8081, so run it in the dedicated container.
 
 Without the database variable, the external approval integration test skips;
 that is not equivalent to the complete acceptance above. Repository CI checks
